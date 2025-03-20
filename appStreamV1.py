@@ -1,6 +1,3 @@
-To remove the Spanish feature from the `appStreamV1.py` file, we will remove all code related to handling the Spanish language and any associated labels or conditions. Here is the updated code after removing the Spanish-related code:
-
-```python
 import streamlit as st
 import pandas as pd
 import re
@@ -249,6 +246,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-```
-
-This version of the code removes all references to the Spanish language and labels, streamlining the application to only support English.
