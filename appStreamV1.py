@@ -4,6 +4,7 @@ import re
 import io
 import xlsxwriter
 from datetime import datetime
+import math  # Import the math module to use the ceil function
 
 def process_data(df, teacher, subject, course, level):
     # Updated list of columns to drop from the CSV (if present)
@@ -17,12 +18,6 @@ def process_data(df, teacher, subject, course, level):
         "Term1 - 2024 - TO DECIDE_DECIDIR - Puntuación de categoría",
         "Term1 - 2024 - TO DO_HACER - Puntuación de categoría",
         "Term1 - 2024 - TO KNOW_SABER - Puntuación de categoría",
-        "Term1 - 2025",
-        "Term1 - 2025 - AUTO EVAL TO BE_SER - Puntuación de categoría",
-        "Term1 - 2025 - TO BE_SER - Puntuación de categoría",
-        "Term1 - 2025 - TO DECIDE_DECIDIR - Puntuación de categoría",
-        "Term1 - 2025 - TO DO_HACER - Puntuación de categoría",
-        "Term1 - 2025 - TO KNOW_SABER - Puntuación de categoría",
         "Unique User ID",
         "Overall",
         "2025",
@@ -99,7 +94,7 @@ def process_data(df, teacher, subject, course, level):
         # Convert the group columns to numeric (coercing errors) and compute the row-wise mean.
         numeric_group = df_cleaned[group_names].apply(lambda x: pd.to_numeric(x, errors='coerce'))
         # Round the average to whole numbers
-        df_cleaned[avg_col_name] = numeric_group.mean(axis=1).round(0)
+        df_cleaned[avg_col_name] = numeric_group.mean(axis=1).apply(math.ceil)  # Apply ceil to round up
         # Append group columns and then the average column.
         final_coded_order.extend(group_names)
         final_coded_order.append(avg_col_name)
@@ -125,7 +120,7 @@ def process_data(df, teacher, subject, course, level):
         if avg_col in df_final.columns:
             final_grade += df_final[avg_col] * weight
 
-    df_final[final_grade_col] = final_grade.round(2)
+    df_final[final_grade_col] = final_grade.apply(math.ceil)  # Apply ceil to round up
 
     # Replace any occurrence of "Missing" with an empty cell.
     df_final.replace("Missing", "", inplace=True)
