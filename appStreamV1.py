@@ -172,7 +172,7 @@ def process_data(df, teacher, subject, course, level):
         final_grade_format = workbook.add_format({
             'bold': True,
             'border': 1,
-            'rotation': 90,
+            #'rotation': 90,
             'bg_color': '#90EE90'  # Light green
         })
         border_format = workbook.add_format({'border': 1})
