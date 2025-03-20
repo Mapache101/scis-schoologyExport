@@ -1,15 +1,4 @@
-Here’s your improved Streamlit UI with a collapsible sidebar for teacher instructions. The functionality remains unchanged.  
 
-### Enhancements:
-- **Collapsible Sidebar**: Contains instructions for teachers.
-- **Clean Layout**: Uses `st.sidebar.expander` for better organization.
-- **File Upload Section**: Clearly labeled for ease of use.
-- **Download Button**: Clearly displayed after processing.  
-
----
-
-### Full Code:
-```python
 import streamlit as st
 import pandas as pd
 import re
@@ -166,6 +155,4 @@ if uploaded_file:
         file_name="organized_gradebook.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
-```
 
-Let me know if you want further refinements! 🚀
