@@ -126,7 +126,7 @@ def process_data(df, teacher, subject, course, level):
         # If at least one category has a valid score, compute the normalized weighted average.
         if weight_sum > 0.5:
             # Normalize and round up to remove decimals.
-            3return math.ceil(weighted_sum / weight_sum)
+            #return math.ceil(weighted_sum / weight_sum)
             return (weighted_sum / weight_sum)
         else:
             return None  # or you could return NaN
