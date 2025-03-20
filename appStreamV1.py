@@ -233,7 +233,7 @@ def process_data(df, teacher, subject, course, level):
     return output
 
 def main():
-    st.set_page_config(page_title="Gradebook Organizer", layout="wide")
+    st.set_page_config(page_title="Gradebook Organizer",)
     st.title("Griffin CSV to Excel 📊")
     teacher = st.text_input("Enter teacher's name:")
     subject = st.text_input("Enter subject area:")
