@@ -114,30 +114,22 @@ def process_data(df, teacher, subject, course, level):
     
     final_grade_col = "Final Grade"
     
-def compute_final_grade(row):
-    """
-    Computes the normalized weighted average of available grades without rounding.
-    
-    Args:
-        row (pd.Series): A row from a DataFrame containing "Average {category}" columns.
-        
-    Returns:
-        float: Final grade (normalized weighted average) or None if no valid categories.
-    """
-    weighted_sum = 0.0
-    weight_sum = 0.0
-    
-    for category, weight in weights.items():
-        avg_col = f"Average {category}"
-        if avg_col in row and pd.notna(row[avg_col]):
-            weighted_sum += row[avg_col] * weight
-            weight_sum += weight
-    
-    if weight_sum > 0:
-        # Return raw float value without rounding
-        return weighted_sum / weight_sum
-    else:
-        return None  # or np.nan for better pandas integration
+    def compute_final_grade(row):
+        weighted_sum = 0
+        weight_sum = 0
+        for category, weight in weights.items():
+            avg_col = f"Average {category}"
+            # Only consider the category if it exists and is not NaN.
+            if avg_col in row and pd.notna(row[avg_col]):
+                weighted_sum += row[avg_col] * weight
+                weight_sum += weight
+        # If at least one category has a valid score, compute the normalized weighted average.
+        if weight_sum > 0:
+            # Normalize and round up to remove decimals.
+            #return math.ceil(weighted_sum / weight_sum)
+            return (weighted_sum / weight_sum)            
+        else:
+            return None  # or you could return NaN
 
     df_final[final_grade_col] = df_final.apply(compute_final_grade, axis=1)
 
