@@ -93,8 +93,8 @@ def process_data(df, teacher, subject, course, level):
         avg_col_name = f"Average {cat}"
         # Convert the group columns to numeric (coercing errors) and compute the row-wise mean.
         numeric_group = df_cleaned[group_names].apply(lambda x: pd.to_numeric(x, errors='coerce'))
-        # Round the average to whole numbers
-        df_cleaned[avg_col_name] = numeric_group.mean(axis=1).apply(math.ceil)  # Apply ceil to round up
+        # Replace NaN values with 0 before rounding up
+        df_cleaned[avg_col_name] = numeric_group.mean(axis=1).fillna(0).apply(math.ceil)
         # Append group columns and then the average column.
         final_coded_order.extend(group_names)
         final_coded_order.append(avg_col_name)
@@ -120,7 +120,8 @@ def process_data(df, teacher, subject, course, level):
         if avg_col in df_final.columns:
             final_grade += df_final[avg_col] * weight
 
-    df_final[final_grade_col] = final_grade.apply(math.ceil)  # Apply ceil to round up
+    # Replace NaN values with 0 before rounding up
+    df_final[final_grade_col] = final_grade.fillna(0).apply(math.ceil)
 
     # Replace any occurrence of "Missing" with an empty cell.
     df_final.replace("Missing", "", inplace=True)
