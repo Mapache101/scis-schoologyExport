@@ -1,3 +1,6 @@
+To remove the Spanish feature from the `appStreamV1.py` file, we will remove all code related to handling the Spanish language and any associated labels or conditions. Here is the updated code after removing the Spanish-related code:
+
+```python
 import streamlit as st
 import pandas as pd
 import re
@@ -5,7 +8,7 @@ import io
 import xlsxwriter
 from datetime import datetime
 
-def process_data(df, teacher, subject, course, level, language):
+def process_data(df, teacher, subject, course, level):
     # Updated list of columns to drop from the CSV (if present)
     columns_to_drop = [
         "Nombre de usuario",
@@ -62,10 +65,7 @@ def process_data(df, teacher, subject, course, level, language):
             general_columns.append(col)
     
     # Reorder general columns so that name-related columns appear first.
-    if language == "Español":
-        name_terms = ["nombre", "apellido"]
-    else:
-        name_terms = ["name", "first", "last"]
+    name_terms = ["name", "first", "last"]
     name_columns = [col for col in general_columns if any(term in col.lower() for term in name_terms)]
     other_general = [col for col in general_columns if col not in name_columns]
     general_columns_reordered = name_columns + other_general
@@ -91,8 +91,8 @@ def process_data(df, teacher, subject, course, level, language):
     for cat in group_order:
         group_sorted = sorted(groups[cat], key=lambda x: x['seq_num'])
         group_names = [d['new_name'] for d in group_sorted]
-        # Define the average column name in the appropriate language.
-        avg_col_name = f"Promedio {cat}" if language == "Español" else f"Average {cat}"
+        # Define the average column name.
+        avg_col_name = f"Average {cat}"
         # Convert the group columns to numeric (coercing errors) and compute the row-wise mean.
         numeric_group = df_cleaned[group_names].apply(lambda x: pd.to_numeric(x, errors='coerce'))
         # Round the average to whole numbers
@@ -115,10 +115,10 @@ def process_data(df, teacher, subject, course, level, language):
     }
     
     final_grade = pd.Series(0.0, index=df_final.index)
-    final_grade_col = "Calificación Final" if language == "Español" else "Final Grade"
+    final_grade_col = "Final Grade"
 
     for category, weight in weights.items():
-        avg_col = f"Promedio {category}" if language == "Español" else f"Average {category}"
+        avg_col = f"Average {category}"
         if avg_col in df_final.columns:
             final_grade += df_final[avg_col] * weight
 
@@ -167,32 +167,20 @@ def process_data(df, teacher, subject, course, level, language):
         })
         border_format = workbook.add_format({'border': 1})
 
-        # Set header labels based on language.
-        if language == "Español":
-            teacher_label = "Docente:"
-            subject_label = "Área:"
-            course_label = "Curso:"
-            level_label = "Nivel:"
-        else:
-            teacher_label = "Teacher:"
-            subject_label = "Subject:"
-            course_label = "Class:"
-            level_label = "Level:"
-
-        worksheet.write('A1', teacher_label, border_format)
+        worksheet.write('A1', "Teacher:", border_format)
         worksheet.write('B1', teacher, border_format)
-        worksheet.write('A2', subject_label, border_format)
+        worksheet.write('A2', "Subject:", border_format)
         worksheet.write('B2', subject, border_format)
-        worksheet.write('A3', course_label, border_format)
+        worksheet.write('A3', "Class:", border_format)
         worksheet.write('B3', course, border_format)
-        worksheet.write('A4', level_label, border_format)
+        worksheet.write('A4', "Level:", border_format)
         worksheet.write('B4', level, border_format)
         timestamp = datetime.now().strftime("%y-%m-%d")
         worksheet.write('A5', timestamp, border_format)
 
         # Write headers with appropriate formatting
         for col_num, value in enumerate(df_final.columns):
-            if value.startswith(("Promedio ", "Average ")):  # Space important to avoid false matches
+            if value.startswith("Average "):  # Space important to avoid false matches
                 worksheet.write(6, col_num, value, avg_header_format)
             elif value == final_grade_col:
                 worksheet.write(6, col_num, value, final_grade_format)
@@ -201,7 +189,7 @@ def process_data(df, teacher, subject, course, level, language):
 
         # Apply formatting to data cells
         average_columns = [col for col in df_final.columns 
-                         if col.startswith(("Promedio ", "Average "))]  # Space important
+                         if col.startswith("Average ")]  # Space important
         
         for col_name in df_final.columns:
             col_idx = df_final.columns.get_loc(col_name)
@@ -215,13 +203,12 @@ def process_data(df, teacher, subject, course, level, language):
                     worksheet.write(row_idx, col_idx, value, border_format)
 
         # Adjust column widths.
-        final_grade_col_name = "Calificación Final" if language == "Español" else "Final Grade"
         for idx, col_name in enumerate(df_final.columns):
             if any(term in col_name.lower() for term in name_terms):
                 worksheet.set_column(idx, idx, 25)
-            elif (language == "Español" and col_name.startswith("Promedio")) or (language == "English" and col_name.startswith("Average")):
+            elif col_name.startswith("Average"):
                 worksheet.set_column(idx, idx, 7)
-            elif col_name == final_grade_col_name:
+            elif col_name == final_grade_col:
                 worksheet.set_column(idx, idx, 12)  # Wider column for final grade
             else:
                 worksheet.set_column(idx, idx, 5)
@@ -240,42 +227,28 @@ def process_data(df, teacher, subject, course, level, language):
 
 def main():
     st.title("Griffin CSV to Excel")
-    language = st.selectbox("Select language / Seleccione idioma", ["English", "Español"])
-
-    # Display input fields with language-specific labels.
-    if language == "Español":
-        teacher = st.text_input("Escriba el nombre del docente:")
-        subject = st.text_input("Escriba el área:")
-        course = st.text_input("Escriba el curso:")
-        level = st.text_input("Escriba el nivel:")
-        uploaded_file = st.file_uploader("Subir archivo CSV", type=["csv"])
-    else:
-        teacher = st.text_input("Enter teacher's name:")
-        subject = st.text_input("Enter subject area:")
-        course = st.text_input("Enter class:")
-        level = st.text_input("Enter level:")
-        uploaded_file = st.file_uploader("Upload CSV file", type=["csv"])
+    teacher = st.text_input("Enter teacher's name:")
+    subject = st.text_input("Enter subject area:")
+    course = st.text_input("Enter class:")
+    level = st.text_input("Enter level:")
+    uploaded_file = st.file_uploader("Upload CSV file", type=["csv"])
 
     if uploaded_file is not None:
         try:
             df = pd.read_csv(uploaded_file)
-            output_excel = process_data(df, teacher, subject, course, level, language)
-            if language == "Español":
-                download_label = "Descargar Gradebook organizado (Excel)"
-                success_msg = "Procesamiento completado!"
-            else:
-                download_label = "Download Organized Gradebook (Excel)"
-                success_msg = "Processing completed!"
+            output_excel = process_data(df, teacher, subject, course, level)
             st.download_button(
-                label=download_label,
+                label="Download Organized Gradebook (Excel)",
                 data=output_excel,
                 file_name="final_cleaned_gradebook.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
-            st.success(success_msg)
+            st.success("Processing completed!")
         except Exception as e:
-            error_msg = f"Ha ocurrido un error: {e}" if language == "Español" else f"An error occurred: {e}"
-            st.error(error_msg)
+            st.error(f"An error occurred: {e}")
 
 if __name__ == "__main__":
     main()
+```
+
+This version of the code removes all references to the Spanish language and labels, streamlining the application to only support English.
