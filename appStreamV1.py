@@ -6,6 +6,20 @@ import xlsxwriter
 from datetime import datetime
 import math  # Import the math module to use the ceil function
 
+# Collapsible sidebar with instructions
+with st.sidebar.expander("📌 Instructions for Teachers", expanded=False):
+    st.markdown("""
+    1. **Ensure Schoology is set to English**  
+    2. Navigate to the **course** you want to export  
+    3. Click on **Gradebook**  
+    4. Click the **three dots** on the top-left corner and select **Export**  
+    5. Choose **Gradebook as CSV**  
+    6. **Upload** that CSV file to this program  
+    7. Fill in the required fields  
+    8. Click **Download Organized Gradebook (Excel)**  
+    9. 🎉 **Enjoy!**  
+    """)
+    
 def process_data(df, teacher, subject, course, level):
     # Updated list of columns to drop from the CSV (if present)
     columns_to_drop = [
