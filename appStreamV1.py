@@ -235,7 +235,7 @@ def process_data(df, teacher, subject, course, level):
 def main():
     st.title("Griffin CSV to Excel 📊")
     # Collapsible sidebar with instructions
-    with st.sidebar.expander("📌 Instructions for Teachers", expanded=False):
+with st.sidebar.expander("📌 Instructions for Teachers", expanded=False):
     st.markdown("""
     1. **Ensure Schoology is set to English**  
     2. Navigate to the **course** you want to export  
