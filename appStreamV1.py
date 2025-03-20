@@ -92,9 +92,9 @@ def process_data(df, teacher, subject, course, level):
         # Define the average column name.
         avg_col_name = f"Average {cat}"
         # Convert the group columns to numeric (coercing errors) and compute the row-wise mean.
+        # Note: We do not replace NaN with 0; missing values are ignored by default.
         numeric_group = df_cleaned[group_names].apply(lambda x: pd.to_numeric(x, errors='coerce'))
-        # Replace NaN values with 0 before rounding up
-        df_cleaned[avg_col_name] = numeric_group.mean(axis=1).fillna(0).apply(math.ceil)
+        df_cleaned[avg_col_name] = numeric_group.mean(axis=1)
         # Append group columns and then the average column.
         final_coded_order.extend(group_names)
         final_coded_order.append(avg_col_name)
@@ -103,7 +103,7 @@ def process_data(df, teacher, subject, course, level):
     final_order = general_columns_reordered + final_coded_order
     df_final = df_cleaned[final_order]
 
-    # Add final grade calculation
+    # Add final grade calculation using normalized weights based on available (non-NaN) category scores.
     weights = {
         "Auto eval": 0.05,
         "TO BE_SER": 0.05,
@@ -112,16 +112,25 @@ def process_data(df, teacher, subject, course, level):
         "TO KNOW_SABER": 0.45
     }
     
-    final_grade = pd.Series(0.0, index=df_final.index)
     final_grade_col = "Final Grade"
+    
+    def compute_final_grade(row):
+        weighted_sum = 0
+        weight_sum = 0
+        for category, weight in weights.items():
+            avg_col = f"Average {category}"
+            # Only consider the category if it exists and is not NaN.
+            if avg_col in row and pd.notna(row[avg_col]):
+                weighted_sum += row[avg_col] * weight
+                weight_sum += weight
+        # If at least one category has a valid score, compute the normalized weighted average.
+        if weight_sum > 0:
+            # Normalize and round up to remove decimals.
+            return math.ceil(weighted_sum / weight_sum)
+        else:
+            return None  # or you could return NaN
 
-    for category, weight in weights.items():
-        avg_col = f"Average {category}"
-        if avg_col in df_final.columns:
-            final_grade += df_final[avg_col] * weight
-
-    # Replace NaN values with 0 before rounding up
-    df_final[final_grade_col] = final_grade.fillna(0).apply(math.ceil)
+    df_final[final_grade_col] = df_final.apply(compute_final_grade, axis=1)
 
     # Replace any occurrence of "Missing" with an empty cell.
     df_final.replace("Missing", "", inplace=True)
@@ -187,8 +196,7 @@ def process_data(df, teacher, subject, course, level):
                 worksheet.write(6, col_num, value, header_format)
 
         # Apply formatting to data cells
-        average_columns = [col for col in df_final.columns 
-                         if col.startswith("Average ")]  # Space important
+        average_columns = [col for col in df_final.columns if col.startswith("Average ")]
         
         for col_name in df_final.columns:
             col_idx = df_final.columns.get_loc(col_name)
