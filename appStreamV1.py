@@ -212,7 +212,7 @@ def process_data(df, teacher, subject, course, level):
 
         # Adjust column widths.
         for idx, col_name in enumerate(df_final.columns):
-            if any(term in col_name.lower() for term in name_terms):
+            if any(term in col_name.lower() for term in ["name", "first", "last"]):
                 worksheet.set_column(idx, idx, 25)
             elif col_name.startswith("Average"):
                 worksheet.set_column(idx, idx, 7)
@@ -235,6 +235,20 @@ def process_data(df, teacher, subject, course, level):
 
 def main():
     st.set_page_config(page_title="Gradebook Organizer",)
+    
+    # Sidebar instructions added without altering the main UI functionality.
+    st.sidebar.markdown("""
+        1. **Ensure Schoology is set to English**  
+        2. Navigate to the **course** you want to export  
+        3. Click on **Gradebook**  
+        4. Click the **three dots** on the top-left corner and select **Export**  
+        5. Choose **Gradebook as CSV**  
+        6. **Upload** that CSV file to this program  
+        7. Fill in the required fields  
+        8. Click **Download Organized Gradebook (Excel)**  
+        9. 🎉 **Enjoy!**
+    """)
+
     st.title("Griffin CSV to Excel 📊")
     teacher = st.text_input("Enter teacher's name:")
     subject = st.text_input("Enter subject area:")
