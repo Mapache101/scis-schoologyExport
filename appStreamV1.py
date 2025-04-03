@@ -117,17 +117,19 @@ def process_data(df, teacher, subject, course, level):
     final_order = general_columns_reordered + final_coded_order
     df_final = df_cleaned[final_order]
 
-    # Calculate the final grade as the sum of the scaled category averages and round to remove decimals.
+    # Calculate the final grade by summing all the Average columns that correspond to a weighted category.
     final_grade_col = "Final Grade"
-
     def compute_final_grade(row):
         total = 0
         valid = False
-        for category in weights.keys():
-            avg_col = f"Average {category}"
-            if avg_col in row and pd.notna(row[avg_col]):
-                total += row[avg_col]
-                valid = True
+        # Iterate over columns that start with "Average "
+        for col in row.index:
+            if col.startswith("Average "):
+                cat = col[len("Average "):].strip()
+                # Check if this average corresponds to one of the weighted categories (case-insensitive)
+                if any(cat.lower() == key.lower() for key in weights):
+                    total += row[col] if pd.notna(row[col]) else 0
+                    valid = True
         return int(round(total)) if valid else None
 
     df_final[final_grade_col] = df_final.apply(compute_final_grade, axis=1)
