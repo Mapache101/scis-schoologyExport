@@ -103,11 +103,11 @@ def process_data(df, teacher, subject, course, level):
         # Convert the group columns to numeric (coercing errors) and compute the row-wise mean.
         numeric_group = df_cleaned[group_names].apply(lambda x: pd.to_numeric(x, errors='coerce'))
         raw_avg = numeric_group.mean(axis=1)
-        # Multiply the average by the weight for that category if available.
+        # Multiply the average by the weight for that category if available, then round to remove decimals.
         if cat in weights:
-            df_cleaned[avg_col_name] = raw_avg * weights[cat]
+            df_cleaned[avg_col_name] = (raw_avg * weights[cat]).round(0)
         else:
-            df_cleaned[avg_col_name] = raw_avg
+            df_cleaned[avg_col_name] = raw_avg.round(0)
         # Append group columns and then the average column.
         final_coded_order.extend(group_names)
         final_coded_order.append(avg_col_name)
@@ -116,7 +116,7 @@ def process_data(df, teacher, subject, course, level):
     final_order = general_columns_reordered + final_coded_order
     df_final = df_cleaned[final_order]
 
-    # Calculate the final grade as the sum of the scaled category averages.
+    # Calculate the final grade as the sum of the scaled category averages and round to remove decimals.
     final_grade_col = "Final Grade"
 
     def compute_final_grade(row):
@@ -127,7 +127,7 @@ def process_data(df, teacher, subject, course, level):
             if avg_col in row and pd.notna(row[avg_col]):
                 total += row[avg_col]
                 valid = True
-        return total if valid else None
+        return int(round(total)) if valid else None
 
     df_final[final_grade_col] = df_final.apply(compute_final_grade, axis=1)
 
@@ -178,82 +178,4 @@ def process_data(df, teacher, subject, course, level):
         worksheet.write('A1', "Teacher:", border_format)
         worksheet.write('B1', teacher, border_format)
         worksheet.write('A2', "Subject:", border_format)
-        worksheet.write('B2', subject, border_format)
-        worksheet.write('A3', "Class:", border_format)
-        worksheet.write('B3', course, border_format)
-        worksheet.write('A4', "Level:", border_format)
-        worksheet.write('B4', level, border_format)
-        timestamp = datetime.now().strftime("%y-%m-%d")
-        worksheet.write('A5', timestamp, border_format)
-
-        # Write headers with appropriate formatting
-        for col_num, value in enumerate(df_final.columns):
-            if value.startswith("Average "):  # Space important to avoid false matches
-                worksheet.write(6, col_num, value, avg_header_format)
-            elif value == final_grade_col:
-                worksheet.write(6, col_num, value, final_grade_format)
-            else:
-                worksheet.write(6, col_num, value, header_format)
-
-        # Apply formatting to data cells
-        average_columns = [col for col in df_final.columns if col.startswith("Average ")]
-        
-        for col_name in df_final.columns:
-            col_idx = df_final.columns.get_loc(col_name)
-            for row_idx in range(7, 7 + len(df_final)):
-                value = df_final_filled.iloc[row_idx-7, col_idx]
-                if col_name in average_columns:
-                    worksheet.write(row_idx, col_idx, value, avg_data_format)
-                elif col_name == final_grade_col:
-                    worksheet.write(row_idx, col_idx, value, final_grade_format)
-                else:
-                    worksheet.write(row_idx, col_idx, value, border_format)
-
-        # Adjust column widths.
-        for idx, col_name in enumerate(df_final.columns):
-            if any(term in col_name.lower() for term in name_terms):
-                worksheet.set_column(idx, idx, 25)
-            elif col_name.startswith("Average"):
-                worksheet.set_column(idx, idx, 7)
-            elif col_name == final_grade_col:
-                worksheet.set_column(idx, idx, 12)  # Wider column for final grade
-            else:
-                worksheet.set_column(idx, idx, 5)
-
-        num_rows = df_final.shape[0]
-        num_cols = df_final.shape[1]
-        data_start_row = 6
-        data_end_row = 6 + num_rows
-        worksheet.conditional_format(data_start_row, 0, data_end_row, num_cols - 1, {
-            'type': 'formula',
-            'criteria': '=TRUE',
-            'format': border_format
-        })
-    output.seek(0)
-    return output
-
-def main():
-    st.set_page_config(page_title="Gradebook Organizer",)
-    st.title("Griffin CSV to Excel 📊")
-    teacher = st.text_input("Enter teacher's name:")
-    subject = st.text_input("Enter subject area:")
-    course = st.text_input("Enter class:")
-    level = st.text_input("Enter level:")
-    uploaded_file = st.file_uploader("Upload CSV file", type=["csv"])
-
-    if uploaded_file is not None:
-        try:
-            df = pd.read_csv(uploaded_file)
-            output_excel = process_data(df, teacher, subject, course, level)
-            st.download_button(
-                label="Download Organized Gradebook (Excel)",
-                data=output_excel,
-                file_name="final_cleaned_gradebook.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
-            st.success("Processing completed!")
-        except Exception as e:
-            st.error(f"An error occurred: {e}")
-
-if __name__ == "__main__":
-    main()
+        worksheet.write('B2', subject
