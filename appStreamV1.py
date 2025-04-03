@@ -6,6 +6,18 @@ import xlsxwriter
 from datetime import datetime
 import math  # Import the math module to use the ceil function
 
+st.sidebar.title("Instructions")
+st.sidebar.markdown("""
+1. **Ensure Schoology is set to English**  
+2. Navigate to the **course** you want to export  
+3. Click on **Gradebook**  
+4. Click the **three dots** on the top-left corner and select **Export**  
+5. Choose **Gradebook as CSV**  
+6. **Upload** that CSV file to this program  
+7. Fill in the required fields  
+8. Click **Download Organized Gradebook (Excel)**  
+9. 🎉 **Enjoy!**  
+""")
 # Weights per category as defined by the Bolivian law
 weights = {
     "Auto eval": 0.05,
