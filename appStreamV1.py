@@ -1,182 +1,262 @@
-# -*- coding: utf-8 -*-
 import streamlit as st
 import pandas as pd
-import numpy as np # <--- IMPORT NUMPY HERE
+import re
 import io
+import xlsxwriter
+from datetime import datetime
+import math  # Import the math module to use the ceil function
+    
+def process_data(df, teacher, subject, course, level):
+    # Updated list of columns to drop from the CSV (if present)
+    columns_to_drop = [
+        "Nombre de usuario",
+        "Username",        
+        "Promedio General",
+        "Term1 - 2024",
+        "Term1 - 2024 - AUTO EVAL TO BE_SER - Puntuación de categoría",
+        "Term1 - 2024 - TO BE_SER - Puntuación de categoría",
+        "Term1 - 2024 - TO DECIDE_DECIDIR - Puntuación de categoría",
+        "Term1 - 2024 - TO DO_HACER - Puntuación de categoría",
+        "Term1 - 2024 - TO KNOW_SABER - Puntuación de categoría",
+        "Unique User ID",
+        "Overall",
+        "2025",
+        "Term1 - 2025",
+        "Term2- 2025",
+        "Term3 - 2025"
+    ]
+    df.drop(columns=columns_to_drop, inplace=True, errors='ignore')
+    
+    # Define phrases that indicate the column should be excluded from the final output.
+    exclusion_phrases = ["(Count in Grade)", "Category Score", "Ungraded"]
+    
+    # Process columns: separate those with a grading category (coded) from general ones.
+    columns_info = []  # List for columns that include "Grading Category:"
+    general_columns = []  # All other columns
+    columns_to_remove = {"ID de usuario único", "ID de usuario unico"}
 
-# Define the weights for each category according to Bolivian regulations
-# Make sure these sum to 1.0
-weights = {
-    "Auto eval": 0.05,
-    "TO BE_SER": 0.05,
-    "TO DECIDE_DECIDIR": 0.05,
-    "TO DO_HACER": 0.40,
-    "TO KNOW_SABER": 0.45
-}
+    for i, col in enumerate(df.columns):
+        if col in columns_to_remove:
+            continue
+        # Skip columns with any exclusion phrase.
+        if any(phrase in col for phrase in exclusion_phrases):
+            continue
 
-def clean_column_names(df):
-    """Removes extra spaces and specific suffixes from column names."""
-    new_columns = {}
-    for col in df.columns:
-        new_col = col.replace('  ', ' ').strip()
-        new_columns[col] = new_col
-    df.rename(columns=new_columns, inplace=True)
-    return df
-
-def identify_grade_columns(df):
-    """Identifies potential grade columns based on naming and data type."""
-    grade_cols = []
-    potential_cols = [col for col in df.columns if col not in ['Student Name', 'Student ID', 'Section']] # Exclude typical non-grade cols
-    for col in potential_cols:
-        numeric_col = pd.to_numeric(df[col], errors='coerce')
-        if numeric_col.notna().sum() / len(df) > 0.8:
-             grade_cols.append(col)
-             df[col] = pd.to_numeric(df[col], errors='coerce')
-    return grade_cols
-
-
-def calculate_averages_and_final_grade(df, grade_cols, weights):
-    """
-    Calculates the weighted contribution for each category and the final grade.
-    Missing grades within a category for a student are treated as 0 for the average.
-
-    Args:
-        df (pd.DataFrame): The input DataFrame with student grades.
-        grade_cols (list): List of columns containing numerical grades.
-        weights (dict): Dictionary with category names as keys and weights as values.
-
-    Returns:
-        pd.DataFrame: DataFrame with added columns for weighted category
-                      contributions and the final grade.
-    """
-    df_processed = df.copy()
-    weighted_contribution_cols = []
-
-    df_processed[grade_cols] = df_processed[grade_cols].fillna(0)
-
-    # Check if weights sum to 1 (or close to it) using numpy.isclose
-    total_weight = sum(weights.values())
-    if not np.isclose(total_weight, 1.0): # <--- CORRECTED HERE
-        st.warning(f"Advertencia: La suma de los pesos de las categorías ({total_weight*100}%) no es 100%. La nota final podría ser inesperada.")
-
-    for category, weight in weights.items():
-        category_cols = [col for col in grade_cols if col.startswith(category)]
-        new_col_name = f"{category} Ponderado ({weight*100:.0f}%)"
-        weighted_contribution_cols.append(new_col_name)
-
-        if category_cols:
-            raw_average = df_processed[category_cols].mean(axis=1)
-            weighted_contribution = raw_average * weight
-            df_processed[new_col_name] = weighted_contribution.round(2)
-            # st.write(f"Calculando '{new_col_name}' usando columnas: {', '.join(category_cols)}") # Optional logging
+        # Check if the column header contains "Grading Category:" and process accordingly.
+        if "Grading Category:" in col:
+            # Extract the category using a regular expression.
+            m = re.search(r'Grading Category:\s*([^,)]+)', col)
+            if m:
+                category = m.group(1).strip()
+            else:
+                category = "Unknown"
+            # Use the text before any parenthesis as the base name.
+            base_name = col.split('(')[0].strip()
+            new_name = f"{base_name} {category}".strip()
+            columns_info.append({
+                'original': col,
+                'new_name': new_name,
+                'category': category,
+                'seq_num': i
+            })
         else:
-            df_processed[new_col_name] = 0.0
-            st.warning(f"Advertencia: No se encontraron columnas de calificaciones para la categoría '{category}'. Se asignó 0 a su contribución.")
-
-    existing_contrib_cols = [col for col in weighted_contribution_cols if col in df_processed.columns]
-
-    if existing_contrib_cols:
-         df_processed['NOTA FINAL'] = df_processed[existing_contrib_cols].sum(axis=1).round(2)
-    else:
-         df_processed['NOTA FINAL'] = 0.0
-         st.error("Error Crítico: No se pudieron calcular las contribuciones ponderadas. La NOTA FINAL no se puede calcular.")
-
-    # Reorder columns (Simplified version)
-    id_cols = [col for col in df.columns if col in ['Student Name', 'Student ID', 'Section']]
-    final_cols_order = id_cols + \
-                       [col for col in grade_cols if col in df_processed.columns] + \
-                       [col for col in weighted_contribution_cols if col in df_processed.columns]
-    if 'NOTA FINAL' in df_processed.columns:
-        final_cols_order.append('NOTA FINAL')
-
-    other_cols = [col for col in df_processed.columns if col not in final_cols_order]
-    final_cols_order = id_cols + other_cols + \
-                       [col for col in grade_cols if col in df_processed.columns] + \
-                       [col for col in weighted_contribution_cols if col in df_processed.columns]
-    if 'NOTA FINAL' in df_processed.columns and 'NOTA FINAL' not in final_cols_order:
-         final_cols_order.append('NOTA FINAL')
+            general_columns.append(col)
     
-    # Ensure uniqueness and all columns are present
-    final_cols_order = list(dict.fromkeys(final_cols_order)) # Keep order, unique
-    missing_cols = [col for col in df_processed.columns if col not in final_cols_order]
-    final_cols_order.extend(missing_cols)
+    # Reorder general columns so that name-related columns appear first.
+    name_terms = ["name", "first", "last"]
+    name_columns = [col for col in general_columns if any(term in col.lower() for term in name_terms)]
+    other_general = [col for col in general_columns if col not in name_columns]
+    general_columns_reordered = name_columns + other_general
+
+    # Order the coded columns by their original order.
+    sorted_coded = sorted(columns_info, key=lambda x: x['seq_num'])
+    new_order = general_columns_reordered + [d['original'] for d in sorted_coded]
+
+    # Create a cleaned DataFrame and rename the coded columns.
+    df_cleaned = df[new_order].copy()
+    rename_dict = {d['original']: d['new_name'] for d in columns_info}
+    df_cleaned.rename(columns=rename_dict, inplace=True)
+
+    # Group the coded columns by the extracted grading category.
+    groups = {}
+    for d in columns_info:
+        groups.setdefault(d['category'], []).append(d)
+    # Order groups by the first appearance of any column in that group.
+    group_order = sorted(groups.keys(), key=lambda cat: min(d['seq_num'] for d in groups[cat]))
+
+    final_coded_order = []
+    # For each group, sort columns by their original order and calculate an average column.
+    for cat in group_order:
+        group_sorted = sorted(groups[cat], key=lambda x: x['seq_num'])
+        group_names = [d['new_name'] for d in group_sorted]
+        # Define the average column name.
+        avg_col_name = f"Average {cat}"
+        # Convert the group columns to numeric (coercing errors) and compute the row-wise mean.
+        # Note: We do not replace NaN with 0; missing values are ignored by default.
+        numeric_group = df_cleaned[group_names].apply(lambda x: pd.to_numeric(x, errors='coerce'))
+        df_cleaned[avg_col_name] = numeric_group.mean(axis=1)
+        # Append group columns and then the average column.
+        final_coded_order.extend(group_names)
+        final_coded_order.append(avg_col_name)
     
-    df_processed = df_processed[final_cols_order]
+    # Final order: general columns followed by the grouped columns (each with its average).
+    final_order = general_columns_reordered + final_coded_order
+    df_final = df_cleaned[final_order]
 
-    return df_processed
+    # Add final grade calculation using normalized weights based on available (non-NaN) category scores.
+    weights = {
+        "Auto eval": 0.05,
+        "TO BE_SER": 0.05,
+        "TO DECIDE_DECIDIR": 0.05,
+        "TO DO_HACER": 0.40,
+        "TO KNOW_SABER": 0.45
+    }
+    
+    final_grade_col = "Final Grade"
+    
+    def compute_final_grade(row):
+        weighted_sum = 0
+        weight_sum = 0
+        for category, weight in weights.items():
+            avg_col = f"Average {category}"
+            # Only consider the category if it exists and is not NaN.
+            if avg_col in row and pd.notna(row[avg_col]):
+                weighted_sum += row[avg_col] * weight
+                weight_sum += weight
+        # If at least one category has a valid score, compute the normalized weighted average.
+        if weight_sum > 0.5:
+            # Normalize and round up to remove decimals.
+            #return math.ceil(weighted_sum / weight_sum)
+            return (weighted_sum / weight_sum)
+        else:
+            return None  # or you could return NaN
 
-def to_excel(df):
-    """Exports DataFrame to Excel format in memory."""
+    df_final[final_grade_col] = df_final.apply(compute_final_grade, axis=1)
+
+    # Replace any occurrence of "Missing" with an empty cell.
+    df_final.replace("Missing", "", inplace=True)
+
+    # Export to Excel with formatting
     output = io.BytesIO()
-    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        df.to_excel(writer, index=False, sheet_name='Notas Procesadas')
-    processed_data = output.getvalue()
-    return processed_data
+    
+    # Add nan_inf_to_errors option to handle NaN/INF values
+    with pd.ExcelWriter(
+        output, 
+        engine='xlsxwriter', 
+        engine_kwargs={'options': {'nan_inf_to_errors': True}}
+    ) as writer:
+        # Convert NaN values to empty strings before writing to Excel
+        df_final_filled = df_final.fillna('')
+        df_final_filled.to_excel(writer, sheet_name='Sheet1', startrow=6, index=False)
+        
+        workbook = writer.book
+        worksheet = writer.sheets['Sheet1']
 
-# --- Streamlit App UI ---
-st.set_page_config(layout="wide")
-st.title("Procesador de Notas de Schoology para Normativa Boliviana")
+        # Create new formats
+        header_format = workbook.add_format({
+            'bold': True, 
+            'border': 1,
+            'rotation': 90,
+            'shrink': True
+        })
+        avg_header_format = workbook.add_format({
+            'bold': True,
+            'border': 1,
+            'rotation': 90,
+            'shrink': True,
+            'bg_color': '#ADD8E6'  # Light blue
+        })
+        avg_data_format = workbook.add_format({
+            'border': 1,
+            'bg_color': '#ADD8E6'
+        })
+        final_grade_format = workbook.add_format({
+            'bold': True,
+            'border': 1,
+            #'rotation': 90,
+            'bg_color': '#90EE90'  # Light green
+        })
+        border_format = workbook.add_format({'border': 1})
 
-st.write("""
-Sube el archivo Excel exportado de Schoology (Gradebook -> Export).
-Esta aplicación calculará las notas ponderadas para las dimensiones de Bolivia
-(Saber, Hacer, Ser, Decidir) y la nota final.
-""")
+        worksheet.write('A1', "Teacher:", border_format)
+        worksheet.write('B1', teacher, border_format)
+        worksheet.write('A2', "Subject:", border_format)
+        worksheet.write('B2', subject, border_format)
+        worksheet.write('A3', "Class:", border_format)
+        worksheet.write('B3', course, border_format)
+        worksheet.write('A4', "Level:", border_format)
+        worksheet.write('B4', level, border_format)
+        timestamp = datetime.now().strftime("%y-%m-%d")
+        worksheet.write('A5', timestamp, border_format)
 
-# Display weights being used in Sidebar
-st.sidebar.title("Pesos de Categorías (%)")
-for category, weight in weights.items():
-    st.sidebar.write(f"- {category}: {weight*100:.0f}%")
-# Check sum using numpy.isclose
-if not np.isclose(sum(weights.values()), 1.0): # <--- CORRECTED HERE
-     st.sidebar.error("¡La suma de los pesos no es 100%!")
+        # Write headers with appropriate formatting
+        for col_num, value in enumerate(df_final.columns):
+            if value.startswith("Average "):  # Space important to avoid false matches
+                worksheet.write(6, col_num, value, avg_header_format)
+            elif value == final_grade_col:
+                worksheet.write(6, col_num, value, final_grade_format)
+            else:
+                worksheet.write(6, col_num, value, header_format)
 
+        # Apply formatting to data cells
+        average_columns = [col for col in df_final.columns if col.startswith("Average ")]
+        
+        for col_name in df_final.columns:
+            col_idx = df_final.columns.get_loc(col_name)
+            for row_idx in range(7, 7 + len(df_final)):
+                value = df_final_filled.iloc[row_idx-7, col_idx]
+                if col_name in average_columns:
+                    worksheet.write(row_idx, col_idx, value, avg_data_format)
+                elif col_name == final_grade_col:
+                    worksheet.write(row_idx, col_idx, value, final_grade_format)
+                else:
+                    worksheet.write(row_idx, col_idx, value, border_format)
 
-uploaded_file = st.file_uploader("Elige un archivo Excel (.xlsx)", type="xlsx")
+        # Adjust column widths.
+        for idx, col_name in enumerate(df_final.columns):
+            if any(term in col_name.lower() for term in name_terms):
+                worksheet.set_column(idx, idx, 25)
+            elif col_name.startswith("Average"):
+                worksheet.set_column(idx, idx, 7)
+            elif col_name == final_grade_col:
+                worksheet.set_column(idx, idx, 12)  # Wider column for final grade
+            else:
+                worksheet.set_column(idx, idx, 5)
 
-if uploaded_file is not None:
-    try:
+        num_rows = df_final.shape[0]
+        num_cols = df_final.shape[1]
+        data_start_row = 6
+        data_end_row = 6 + num_rows
+        worksheet.conditional_format(data_start_row, 0, data_end_row, num_cols - 1, {
+            'type': 'formula',
+            'criteria': '=TRUE',
+            'format': border_format
+        })
+    output.seek(0)
+    return output
+
+def main():
+    st.set_page_config(page_title="Gradebook Organizer",)
+    st.title("Griffin CSV to Excel 📊")
+    teacher = st.text_input("Enter teacher's name:")
+    subject = st.text_input("Enter subject area:")
+    course = st.text_input("Enter class:")
+    level = st.text_input("Enter level:")
+    uploaded_file = st.file_uploader("Upload CSV file", type=["csv"])
+
+    if uploaded_file is not None:
         try:
-            df = pd.read_excel(uploaded_file, sheet_name=0, skiprows=0)
+            df = pd.read_csv(uploaded_file)
+            output_excel = process_data(df, teacher, subject, course, level)
+            st.download_button(
+                label="Download Organized Gradebook (Excel)",
+                data=output_excel,
+                file_name="final_cleaned_gradebook.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+            st.success("Processing completed!")
         except Exception as e:
-            st.warning(f"No se pudo leer la primera fila como encabezado, intentando saltar 1 fila. Error: {e}")
-            df = pd.read_excel(uploaded_file, sheet_name=0, skiprows=1)
+            st.error(f"An error occurred: {e}")
 
-        st.success("Archivo cargado exitosamente.")
-        st.write("Primeras filas del archivo original:")
-        st.dataframe(df.head())
-
-        df = clean_column_names(df)
-        # st.write("Columnas después de la limpieza inicial:") # Optional log
-        # st.text(', '.join(df.columns)) # Optional log
-
-        grade_cols = identify_grade_columns(df)
-
-        if not grade_cols:
-            st.error("No se pudieron identificar columnas de calificaciones numéricas. Verifica el formato del archivo.")
-        else:
-            st.write("Columnas identificadas como calificaciones:")
-            st.text(', '.join(grade_cols))
-
-            st.info("Presiona el botón para procesar las notas.")
-
-            if st.button("Procesar Archivo"):
-                with st.spinner("Calculando notas ponderadas y finales..."):
-                    df_processed = calculate_averages_and_final_grade(df, grade_cols, weights)
-
-                    st.success("¡Procesamiento completado!")
-                    st.write("Notas Procesadas:")
-                    st.dataframe(df_processed)
-
-                    excel_data = to_excel(df_processed)
-
-                    st.download_button(
-                        label="📥 Descargar Archivo Procesado (.xlsx)",
-                        data=excel_data,
-                        file_name=f"notas_procesadas_{uploaded_file.name}",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                    )
-
-    except Exception as e:
-        st.error(f"Ocurrió un error al procesar el archivo: {e}")
-        st.exception(e)
+if __name__ == "__main__":
+    main()
