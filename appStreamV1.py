@@ -103,9 +103,10 @@ def process_data(df, teacher, subject, course, level):
         # Convert the group columns to numeric (coercing errors) and compute the row-wise mean.
         numeric_group = df_cleaned[group_names].apply(lambda x: pd.to_numeric(x, errors='coerce'))
         raw_avg = numeric_group.mean(axis=1)
-        # Multiply the average by the weight for that category if available, then round to remove decimals.
-        if cat in weights:
-            df_cleaned[avg_col_name] = (raw_avg * weights[cat]).round(0)
+        # Use a case-insensitive match for the weight.
+        weight = next((w for k, w in weights.items() if k.lower() == cat.lower()), None)
+        if weight is not None:
+            df_cleaned[avg_col_name] = (raw_avg * weight).round(0)
         else:
             df_cleaned[avg_col_name] = raw_avg.round(0)
         # Append group columns and then the average column.
