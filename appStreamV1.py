@@ -241,7 +241,7 @@ def main():
         1. **Ensure Schoology is set to English**  
         2. Navigate to the **course** you want to export  
         3. Click on **Gradebook**  
-        4. Click the **three dots** on the top-left corner and select **Export**  
+        4. Click the **three dots** on the top-right corner and select **Export**  
         5. Choose **Gradebook as CSV**  
         6. **Upload** that CSV file to this program  
         7. Fill in the required fields  
