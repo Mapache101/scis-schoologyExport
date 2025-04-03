@@ -236,6 +236,18 @@ def process_data(df, teacher, subject, course, level):
 def main():
     st.set_page_config(page_title="Gradebook Organizer",)
     st.title("Griffin CSV to Excel 📊")
+    
+    # Sidebar instructions
+    st.sidebar.title("Instructions")
+    st.sidebar.info(
+        "1. Enter the teacher's name.\n"
+        "2. Enter the subject area.\n"
+        "3. Enter the class name.\n"
+        "4. Enter the level.\n"
+        "5. Upload the CSV file exported from Schoology.\n"
+        "6. Click on the download button to get the organized Excel gradebook."
+    )
+    
     teacher = st.text_input("Enter teacher's name:")
     subject = st.text_input("Enter subject area:")
     course = st.text_input("Enter class:")
