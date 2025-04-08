@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 import re
 import io
 import xlsxwriter
@@ -128,8 +129,15 @@ def process_data(df, teacher, subject, course, level):
                 cat = col[len("Average "):].strip()
                 # Check if this average corresponds to one of the weighted categories (case-insensitive)
                 if any(cat.lower() == key.lower() for key in weights):
-                    total += row[col] if pd.notna(row[col]) else 0
-                    valid = True
+                    val = row[col]
+                    if not pd.api.types.is_scalar(val):
+                        try:
+                            val = val.item()
+                        except Exception:
+                            val = val[0]
+                    if pd.notna(val):
+                        total += val
+                        valid = True
         return int(round(total)) if valid else None
 
     df_final[final_grade_col] = df_final.apply(compute_final_grade, axis=1)
@@ -144,138 +152,4 @@ def process_data(df, teacher, subject, course, level):
     with pd.ExcelWriter(
         output, 
         engine='xlsxwriter', 
-        engine_kwargs={'options': {'nan_inf_to_errors': True}}
-    ) as writer:
-        # Convert NaN values to empty strings before writing to Excel
-        df_final_filled = df_final.fillna('')
-        df_final_filled.to_excel(writer, sheet_name='Sheet1', startrow=6, index=False)
-        
-        workbook = writer.book
-        worksheet = writer.sheets['Sheet1']
-
-        # Create new formats
-        header_format = workbook.add_format({
-            'bold': True, 
-            'border': 1,
-            'rotation': 90,
-            'shrink': True
-        })
-        avg_header_format = workbook.add_format({
-            'bold': True,
-            'border': 1,
-            'rotation': 90,
-            'shrink': True,
-            'bg_color': '#ADD8E6'  # Light blue
-        })
-        avg_data_format = workbook.add_format({
-            'border': 1,
-            'bg_color': '#ADD8E6'
-        })
-        final_grade_format = workbook.add_format({
-            'bold': True,
-            'border': 1,
-            'bg_color': '#90EE90'  # Light green
-        })
-        border_format = workbook.add_format({'border': 1})
-
-        # Write header information with correctly closed parentheses.
-        worksheet.write('A1', "Teacher:", border_format)
-        worksheet.write('B1', teacher, border_format)
-        worksheet.write('A2', "Subject:", border_format)
-        worksheet.write('B2', subject, border_format)
-        worksheet.write('A3', "Class:", border_format)
-        worksheet.write('B3', course, border_format)
-        worksheet.write('A4', "Level:", border_format)
-        worksheet.write('B4', level, border_format)
-        timestamp = datetime.now().strftime("%y-%m-%d")
-        worksheet.write('A5', timestamp, border_format)
-
-        # Write headers with appropriate formatting
-        for col_num, value in enumerate(df_final.columns):
-            if value.startswith("Average "):  # Space important to avoid false matches
-                worksheet.write(6, col_num, value, avg_header_format)
-            elif value == final_grade_col:
-                worksheet.write(6, col_num, value, final_grade_format)
-            else:
-                worksheet.write(6, col_num, value, header_format)
-
-        # Apply formatting to data cells
-        average_columns = [col for col in df_final.columns if col.startswith("Average ")]
-        
-        for col_name in df_final.columns:
-            col_idx = df_final.columns.get_loc(col_name)
-            for row_idx in range(7, 7 + len(df_final)):
-                # Get the value from the DataFrame
-                value = df_final_filled.iloc[row_idx-7, col_idx]
-                # If value is a Series, extract a scalar
-                if isinstance(value, pd.Series):
-                    value = value.iloc[0]
-                if col_name in average_columns:
-                    worksheet.write(row_idx, col_idx, value, avg_data_format)
-                elif col_name == final_grade_col:
-                    worksheet.write(row_idx, col_idx, value, final_grade_format)
-                else:
-                    worksheet.write(row_idx, col_idx, value, border_format)
-
-        # Adjust column widths.
-        for idx, col_name in enumerate(df_final.columns):
-            if any(term in col_name.lower() for term in ["name", "first", "last"]):
-                worksheet.set_column(idx, idx, 25)
-            elif col_name.startswith("Average"):
-                worksheet.set_column(idx, idx, 7)
-            elif col_name == final_grade_col:
-                worksheet.set_column(idx, idx, 12)  # Wider column for final grade
-            else:
-                worksheet.set_column(idx, idx, 5)
-
-        num_rows = df_final.shape[0]
-        num_cols = df_final.shape[1]
-        data_start_row = 6
-        data_end_row = 6 + num_rows
-        worksheet.conditional_format(data_start_row, 0, data_end_row, num_cols - 1, {
-            'type': 'formula',
-            'criteria': '=TRUE',
-            'format': border_format
-        })
-    output.seek(0)
-    return output
-
-def main():
-    st.set_page_config(page_title="Gradebook Organizer",)
-    
-    # Sidebar instructions added without altering the main UI functionality.
-    st.sidebar.markdown("""
-        1. **Ensure Schoology is set to English**  
-        2. Navigate to the **course** you want to export  
-        3. Click on **Gradebook**  
-        4. Click the **three dots** on the top-right corner and select **Export**  
-        5. Choose **Gradebook as CSV**  
-        6. **Upload** that CSV file to this program  
-        7. Fill in the required fields  
-        8. Click **Download Organized Gradebook (Excel)**  
-        9. 🎉 **Enjoy!**
-    """)
-
-    st.title("Griffin CSV to Excel 📊")
-    teacher = st.text_input("Enter teacher's name:")
-    subject = st.text_input("Enter subject area:")
-    course = st.text_input("Enter class:")
-    level = st.text_input("Enter level:")
-    uploaded_file = st.file_uploader("Upload CSV file", type=["csv"])
-
-    if uploaded_file is not None:
-        try:
-            df = pd.read_csv(uploaded_file)
-            output_excel = process_data(df, teacher, subject, course, level)
-            st.download_button(
-                label="Download Organized Gradebook (Excel)",
-                data=output_excel,
-                file_name="final_cleaned_gradebook.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
-            st.success("Processing completed!")
-        except Exception as e:
-            st.error(f"An error occurred: {e}")
-
-if __name__ == "__main__":
-    main()
+        engine_kwargs={'_
