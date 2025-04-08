@@ -1,3 +1,4 @@
+
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -130,11 +131,16 @@ def process_data(df, teacher, subject, course, level):
                 # Check if this average corresponds to one of the weighted categories (case-insensitive)
                 if any(cat.lower() == key.lower() for key in weights):
                     val = row[col]
+                    # If the value is not scalar, take the first element.
                     if not pd.api.types.is_scalar(val):
                         try:
-                            val = val.item()
-                        except Exception:
                             val = val[0]
+                        except Exception:
+                            continue
+                    try:
+                        val = float(val)
+                    except Exception:
+                        continue
                     if pd.notna(val):
                         total += val
                         valid = True
@@ -186,7 +192,7 @@ def process_data(df, teacher, subject, course, level):
         })
         border_format = workbook.add_format({'border': 1})
 
-        # Write header information with correctly closed parentheses.
+        # Write header information.
         worksheet.write('A1', "Teacher:", border_format)
         worksheet.write('B1', teacher, border_format)
         worksheet.write('A2', "Subject:", border_format)
@@ -198,36 +204,31 @@ def process_data(df, teacher, subject, course, level):
         timestamp = datetime.now().strftime("%y-%m-%d")
         worksheet.write('A5', timestamp, border_format)
 
-        # Write headers with appropriate formatting
+        # Write headers with appropriate formatting.
         for col_num, value in enumerate(df_final.columns):
-            if value.startswith("Average "):  # Space important to avoid false matches
+            if value.startswith("Average "):
                 worksheet.write(6, col_num, value, avg_header_format)
             elif value == final_grade_col:
                 worksheet.write(6, col_num, value, final_grade_format)
             else:
                 worksheet.write(6, col_num, value, header_format)
 
-        # Apply formatting to data cells
+        # Apply formatting to data cells.
         average_columns = [col for col in df_final.columns if col.startswith("Average ")]
-        
         for col_name in df_final.columns:
             col_idx = df_final.columns.get_loc(col_name)
             for row_idx in range(7, 7 + len(df_final)):
-                # Get the cell value from the DataFrame
-                value = df_final_filled.iloc[row_idx-7, col_idx]
-                # If the value is not a scalar, try converting it to one.
+                value = df_final_filled.iloc[row_idx - 7, col_idx]
+                # For non-scalar values, take the first element.
                 if not pd.api.types.is_scalar(value):
                     try:
-                        value = value.item()
-                    except Exception:
                         value = value[0]
-                if col_name in average_columns:
-                    worksheet.write(row_idx, col_idx, value, avg_data_format)
-                elif col_name == final_grade_col:
-                    worksheet.write(row_idx, col_idx, value, final_grade_format)
-                else:
-                    worksheet.write(row_idx, col_idx, value, border_format)
-
+                    except Exception:
+                        value = ""
+                worksheet.write(row_idx, col_idx, value, 
+                                avg_data_format if col_name in average_columns 
+                                else final_grade_format if col_name == final_grade_col 
+                                else border_format)
         # Adjust column widths.
         for idx, col_name in enumerate(df_final.columns):
             if any(term in col_name.lower() for term in ["name", "first", "last"]):
@@ -235,7 +236,7 @@ def process_data(df, teacher, subject, course, level):
             elif col_name.startswith("Average"):
                 worksheet.set_column(idx, idx, 7)
             elif col_name == final_grade_col:
-                worksheet.set_column(idx, idx, 12)  # Wider column for final grade
+                worksheet.set_column(idx, idx, 12)
             else:
                 worksheet.set_column(idx, idx, 5)
 
@@ -254,7 +255,7 @@ def process_data(df, teacher, subject, course, level):
 def main():
     st.set_page_config(page_title="Gradebook Organizer",)
     
-    # Sidebar instructions added without altering the main UI functionality.
+    # Sidebar instructions.
     st.sidebar.markdown("""
         1. **Ensure Schoology is set to English**  
         2. Navigate to the **course** you want to export  
