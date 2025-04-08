@@ -180,7 +180,7 @@ def process_data(df, teacher, subject, course, level):
         })
         border_format = workbook.add_format({'border': 1})
 
-        # Write header information with correctly closed parentheses.
+        # Write header information.
         worksheet.write('A1', "Teacher:", border_format)
         worksheet.write('B1', teacher, border_format)
         worksheet.write('A2', "Subject:", border_format)
@@ -192,7 +192,7 @@ def process_data(df, teacher, subject, course, level):
         timestamp = datetime.now().strftime("%y-%m-%d")
         worksheet.write('A5', timestamp, border_format)
 
-        # Write headers with appropriate formatting
+        # Write headers with appropriate formatting.
         for col_num, value in enumerate(df_final.columns):
             if value.startswith("Average "):  # Space important to avoid false matches
                 worksheet.write(6, col_num, value, avg_header_format)
@@ -201,13 +201,16 @@ def process_data(df, teacher, subject, course, level):
             else:
                 worksheet.write(6, col_num, value, header_format)
 
-        # Apply formatting to data cells
+        # Apply formatting to data cells.
         average_columns = [col for col in df_final.columns if col.startswith("Average ")]
         
         for col_name in df_final.columns:
             col_idx = df_final.columns.get_loc(col_name)
             for row_idx in range(7, 7 + len(df_final)):
                 value = df_final_filled.iloc[row_idx-7, col_idx]
+                # If the cell value is a pandas Series, take its first element.
+                if isinstance(value, pd.Series):
+                    value = value.iloc[0]
                 if col_name in average_columns:
                     worksheet.write(row_idx, col_idx, value, avg_data_format)
                 elif col_name == final_grade_col:
@@ -241,7 +244,7 @@ def process_data(df, teacher, subject, course, level):
 def main():
     st.set_page_config(page_title="Gradebook Organizer")
     
-    # Sidebar instructions added without altering the main UI functionality.
+    # Sidebar instructions.
     st.sidebar.markdown("""
         1. **Ensure Schoology is set to English**  
         2. Navigate to the **course** you want to export  
@@ -264,7 +267,7 @@ def main():
     if uploaded_file is not None:
         try:
             df = pd.read_csv(uploaded_file)
-            # Convert all column headers to string to avoid ambiguous truth value errors
+            # Convert all column headers to strings to avoid potential issues.
             df.columns = df.columns.astype(str)
             output_excel = process_data(df, teacher, subject, course, level)
             st.download_button(
