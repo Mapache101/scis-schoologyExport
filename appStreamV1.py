@@ -1,3 +1,23 @@
+import streamlit as st
+import pandas as pd
+import re
+import io
+import xlsxwriter
+from datetime import datetime
+import math
+
+# Define weights for categories
+weights = {
+    "Auto eval": 0.05,
+    "TO BE_SER": 0.05,
+    "TO DECIDE_DECIDIR": 0.05,
+    "TO DO_HACER": 0.40,
+    "TO KNOW_SABER": 0.45
+}
+
+def custom_round(value):
+    return math.floor(value + 0.5)
+
 def process_data(df, teacher, subject, course, level):
     columns_to_drop = [
         "Nombre de usuario", "Username", "Promedio General",
@@ -170,3 +190,31 @@ def process_data(df, teacher, subject, course, level):
                 ws.set_column(idx, idx, 10)
 
     return output
+
+# --- Streamlit App ---
+
+st.title("📊 Schoology Gradebook Analyzer")
+
+uploaded_file = st.file_uploader("Upload a Schoology Gradebook CSV", type="csv")
+
+if uploaded_file:
+    df = pd.read_csv(uploaded_file)
+
+    with st.form("form"):
+        st.subheader("Teacher/Class Info")
+        teacher = st.text_input("Teacher Name")
+        subject = st.text_input("Subject")
+        course = st.text_input("Class/Course Name")
+        level = st.text_input("Level or Grade")
+        submitted = st.form_submit_button("Generate Grade Report")
+
+    if submitted:
+        result = process_data(df, teacher, subject, course, level)
+        st.success("✅ Grade report generated!")
+
+        st.download_button(
+            label="📥 Download Excel Report",
+            data=result.getvalue(),
+            file_name=f"{subject}_{course}_grades.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
