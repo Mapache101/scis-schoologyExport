@@ -1,23 +1,3 @@
-import streamlit as st
-import pandas as pd
-import re
-import io
-import xlsxwriter
-from datetime import datetime
-import math
-
-# Define weights for categories
-weights = {
-    "Auto eval": 0.05,
-    "TO BE_SER": 0.05,
-    "TO DECIDE_DECIDIR": 0.05,
-    "TO DO_HACER": 0.40,
-    "TO KNOW_SABER": 0.45
-}
-
-def custom_round(value):
-    return math.floor(value + 0.5)
-
 def process_data(df, teacher, subject, course, level):
     columns_to_drop = [
         "Nombre de usuario", "Username", "Promedio General",
@@ -27,34 +7,91 @@ def process_data(df, teacher, subject, course, level):
 
     df.replace("Missing", pd.NA, inplace=True)
 
-    # Identify general columns (like First Name, Last Name)
+    exclusion_phrases = ["(Count in Grade)", "Category Score", "Ungraded"]
+    columns_info = []
+    general_columns = []
+    cols_to_remove = {"ID de usuario único", "ID de usuario unico"}
+
+    for i, col in enumerate(df.columns):
+        col = str(col)
+        if col in cols_to_remove or any(ph in col for ph in exclusion_phrases):
+            continue
+
+        if "Grading Category:" in col:
+            m_cat = re.search(r'Grading Category:\s*([^,)]+)', col)
+            category = m_cat.group(1).strip() if m_cat else "Unknown"
+            m_pts = re.search(r'Max Points:\s*([\d\.]+)', col)
+            max_pts = float(m_pts.group(1)) if m_pts else None
+            base_name = col.split('(')[0].strip()
+            new_name = f"{base_name} {category}".strip()
+            columns_info.append({
+                'original': col,
+                'new_name': new_name,
+                'category': category,
+                'seq_num': i,
+                'max_points': max_pts
+            })
+        else:
+            general_columns.append(col)
+
     name_terms = ["name", "first", "last"]
-    name_cols = [c for c in df.columns if any(t in c.lower() for t in name_terms)]
-    other_cols = [c for c in df.columns if c not in name_cols and "Category Score" not in c]
+    name_cols = [c for c in general_columns if any(t in c.lower() for t in name_terms)]
+    other_cols = [c for c in general_columns if c not in name_cols]
     general_reordered = name_cols + other_cols
-    
-    # Create the final DataFrame
-    df_final = df[general_reordered].copy()
+
+    sorted_coded = sorted(columns_info, key=lambda x: x['seq_num'])
+    new_order = general_reordered + [d['original'] for d in sorted_coded]
+
+    df_cleaned = df[new_order].copy()
+    df_cleaned.rename({d['original']: d['new_name'] for d in columns_info}, axis=1, inplace=True)
+
+    groups = {}
+    for d in columns_info:
+        groups.setdefault(d['category'], []).append(d)
+    group_order = sorted(groups, key=lambda cat: min(d['seq_num'] for d in groups[cat]))
 
     final_coded = []
-    for cat, wt in weights.items():
+    for cat in group_order:
+        grp = sorted(groups[cat], key=lambda x: x['seq_num'])
+        names = [d['new_name'] for d in grp]
+        
+        # --- NEW LOGIC: Use pre-calculated category score instead of summing individual assignments ---
         # Find the specific category score column name
         category_score_col = f"Term2- 2025 - {cat} - Category Score"
         
-        # Check if the column exists in the DataFrame
+        raw_avg = pd.Series(dtype='float64') # Initialize an empty Series
         if category_score_col in df.columns:
-            # Convert to numeric, handle potential non-numeric values
-            raw_avg = pd.to_numeric(df[category_score_col], errors='coerce').fillna(0)
-            
-            # Apply the weight
-            weighted = raw_avg * wt
-            
-            # Add the weighted average column to the final DataFrame
-            avg_col = f"Average {cat}"
-            df_final[avg_col] = weighted
-            final_coded.append(avg_col)
+            # Use the pre-calculated score from the original dataframe
+            raw_avg = pd.to_numeric(df[category_score_col], errors='coerce')
         else:
-            print(f"Warning: Category score column '{category_score_col}' not found. Skipping.")
+            # Fallback to the original method if column is not found
+            numeric = df_cleaned[names].apply(pd.to_numeric, errors='coerce')
+            sum_earned = numeric.sum(axis=1, skipna=True)
+            max_points_df = pd.DataFrame(index=df_cleaned.index)
+            for d in grp:
+                col = d['new_name']
+                max_pts = d['max_points']
+                max_points_df[col] = numeric[col].notna().astype(float) * max_pts
+            sum_possible = max_points_df.sum(axis=1, skipna=True)
+            raw_avg = (sum_earned / sum_possible) * 100
+        
+        raw_avg = raw_avg.fillna(0)
+        # --- END NEW LOGIC ---
+            
+        wt = None
+        for key in weights:
+            if cat.lower() == key.lower():
+                wt = weights[key]
+                break
+        
+        weighted = raw_avg * wt if wt is not None else raw_avg
+        avg_col = f"Average {cat}"
+        df_cleaned[avg_col] = weighted
+
+        final_coded.extend(names + [avg_col])
+
+    final_order = general_reordered + final_coded
+    df_final = df_cleaned[final_order]
 
     def compute_final_grade(row):
         total = 0
@@ -133,31 +170,3 @@ def process_data(df, teacher, subject, course, level):
                 ws.set_column(idx, idx, 10)
 
     return output
-
-# --- Streamlit App ---
-
-st.title("📊 Schoology Gradebook Analyzer")
-
-uploaded_file = st.file_uploader("Upload a Schoology Gradebook CSV", type="csv")
-
-if uploaded_file:
-    df = pd.read_csv(uploaded_file)
-
-    with st.form("form"):
-        st.subheader("Teacher/Class Info")
-        teacher = st.text_input("Teacher Name")
-        subject = st.text_input("Subject")
-        course = st.text_input("Class/Course Name")
-        level = st.text_input("Level or Grade")
-        submitted = st.form_submit_button("Generate Grade Report")
-
-    if submitted:
-        result = process_data(df, teacher, subject, course, level)
-        st.success("✅ Grade report generated!")
-
-        st.download_button(
-            label="📥 Download Excel Report",
-            data=result.getvalue(),
-            file_name=f"{subject}_{course}_grades.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
