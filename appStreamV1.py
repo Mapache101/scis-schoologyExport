@@ -21,101 +21,40 @@ def custom_round(value):
 def process_data(df, teacher, subject, course, level):
     columns_to_drop = [
         "Nombre de usuario", "Username", "Promedio General",
-        "Unique User ID", "Overall", "2025", "Term1 - 2025", "Term3 - 2025"]
+        "Unique User ID", "2025", "Term3 - 2025"
+    ]
     df.drop(columns=columns_to_drop, inplace=True, errors='ignore')
 
     df.replace("Missing", pd.NA, inplace=True)
 
-    exclusion_phrases = ["(Count in Grade)", "Category Score", "Ungraded"]
-    columns_info = []
-    general_columns = []
-    cols_to_remove = {"ID de usuario único", "ID de usuario unico"}
-
-    for i, col in enumerate(df.columns):
-        col = str(col)
-        if col in cols_to_remove or any(ph in col for ph in exclusion_phrases):
-            continue
-
-        if "Grading Category:" in col:
-            m_cat = re.search(r'Grading Category:\s*([^,)]+)', col)
-            category = m_cat.group(1).strip() if m_cat else "Unknown"
-            m_pts = re.search(r'Max Points:\s*([\d\.]+)', col)
-            max_pts = float(m_pts.group(1)) if m_pts else None
-            base_name = col.split('(')[0].strip()
-            new_name = f"{base_name} {category}".strip()
-            columns_info.append({
-                'original': col,
-                'new_name': new_name,
-                'category': category,
-                'seq_num': i,
-                'max_points': max_pts
-            })
-        else:
-            general_columns.append(col)
-
+    # Identify general columns (like First Name, Last Name)
     name_terms = ["name", "first", "last"]
-    name_cols = [c for c in general_columns if any(t in c.lower() for t in name_terms)]
-    other_cols = [c for c in general_columns if c not in name_cols]
+    name_cols = [c for c in df.columns if any(t in c.lower() for t in name_terms)]
+    other_cols = [c for c in df.columns if c not in name_cols and "Category Score" not in c]
     general_reordered = name_cols + other_cols
-
-    sorted_coded = sorted(columns_info, key=lambda x: x['seq_num'])
-    new_order = general_reordered + [d['original'] for d in sorted_coded]
-
-    df_cleaned = df[new_order].copy()
-    df_cleaned.rename({d['original']: d['new_name'] for d in columns_info}, axis=1, inplace=True)
-
-    groups = {}
-    for d in columns_info:
-        groups.setdefault(d['category'], []).append(d)
-    group_order = sorted(groups, key=lambda cat: min(d['seq_num'] for d in groups[cat]))
+    
+    # Create the final DataFrame
+    df_final = df[general_reordered].copy()
 
     final_coded = []
-    for cat in group_order:
-        grp = sorted(groups[cat], key=lambda x: x['seq_num'])
-        names = [d['new_name'] for d in grp]
-        numeric = df_cleaned[names].apply(pd.to_numeric, errors='coerce')
-
-        earned_points = numeric.copy()
-        max_points_df = pd.DataFrame(index=df_cleaned.index)
-
-        for d in grp:
-            col = d['new_name']
-            max_pts = d['max_points']
-            max_points_df[col] = numeric[col].notna().astype(float) * max_pts
-
-        sum_earned = earned_points.sum(axis=1, skipna=True)
-        sum_possible = max_points_df.sum(axis=1, skipna=True)
-        raw_avg = (sum_earned / sum_possible) * 100
-        raw_avg = raw_avg.fillna(0)
-
+    for cat, wt in weights.items():
+        # Find the specific category score column name
+        category_score_col = f"Term2- 2025 - {cat} - Category Score"
         
-        wt = None # Default to None
-        # Iterate through the keys in your weights dictionary
-        for key in weights:
-            # Compare the extracted category name (cat) with the dictionary key, ignoring case
-            if cat.lower() == key.lower():
-                wt = weights[key] # If they match (case-insensitive), get the weight
-                break # Stop searching once found
-        # --- END REPLACEMENT ---
-
-        # Apply weight (this part remains the same, but wt should now be found correctly)
-        weighted = raw_avg * wt if wt is not None else raw_avg
-        # Optional: Add a warning if a weight is still not found
-        if wt is None:
-             print(f"Warning: No weight found for category '{cat}'. Using raw average.")
-             # Consider if you want 'weighted' to be 0 instead of raw_avg here:
-             # weighted = 0
-
-        avg_col = f"Average {cat}"
-        df_cleaned[avg_col] = weighted
-        weighted = raw_avg * wt if wt is not None else raw_avg
-        avg_col = f"Average {cat}"
-        df_cleaned[avg_col] = weighted
-
-        final_coded.extend(names + [avg_col])
-
-    final_order = general_reordered + final_coded
-    df_final = df_cleaned[final_order]
+        # Check if the column exists in the DataFrame
+        if category_score_col in df.columns:
+            # Convert to numeric, handle potential non-numeric values
+            raw_avg = pd.to_numeric(df[category_score_col], errors='coerce').fillna(0)
+            
+            # Apply the weight
+            weighted = raw_avg * wt
+            
+            # Add the weighted average column to the final DataFrame
+            avg_col = f"Average {cat}"
+            df_final[avg_col] = weighted
+            final_coded.append(avg_col)
+        else:
+            print(f"Warning: Category score column '{category_score_col}' not found. Skipping.")
 
     def compute_final_grade(row):
         total = 0
@@ -162,8 +101,8 @@ def process_data(df, teacher, subject, course, level):
 
         ws.write('A1', "Teacher:", b_fmt); ws.write('B1', teacher, b_fmt)
         ws.write('A2', "Subject:", b_fmt); ws.write('B2', subject, b_fmt)
-        ws.write('A3', "Class:", b_fmt);   ws.write('B3', course, b_fmt)
-        ws.write('A4', "Level:", b_fmt);   ws.write('B4', level, b_fmt)
+        ws.write('A3', "Class:", b_fmt);    ws.write('B3', course, b_fmt)
+        ws.write('A4', "Level:", b_fmt);    ws.write('B4', level, b_fmt)
         ws.write('A5', datetime.now().strftime("%y-%m-%d"), b_fmt)
 
         for idx, col in enumerate(df_final.columns):
