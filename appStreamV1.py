@@ -21,57 +21,44 @@ def custom_round(value):
 def process_data(df, teacher, subject, course, level):
     columns_to_drop = [
         "Nombre de usuario", "Username", "Promedio General",
-        "Unique User ID", "2025", "Term3 - 2025"
+        "Term1 - 2024", "Term1 - 2024 - AUTO EVAL TO BE_SER - Puntuación de categoría",
+        "Term1 - 2024 - TO BE_SER - Puntuación de categoría",
+        "Term1 - 2024 - TO DECIDE_DECIDIR - Puntuación de categoría",
+        "Term1 - 2024 - TO DO_HACER - Puntuación de categoría",
+        "Term1 - 2024 - TO KNOW_SABER - Puntuación de categoría",
+        "Unique User ID", "Overall", "2025", "Term1 - 2025",
+        "Term2- 2025", "Term3 - 2025"
     ]
     df.drop(columns=columns_to_drop, inplace=True, errors='ignore')
 
     df.replace("Missing", pd.NA, inplace=True)
 
-    # Identify general columns (like First Name, Last Name)
-    name_terms = ["name", "first", "last"]
-    name_cols = [c for c in df.columns if any(t in c.lower() for t in name_terms)]
-    other_cols = [c for c in df.columns if c not in name_cols and "Category Score" not in c and "Term2- 2025" not in c]
-    general_reordered = name_cols + other_cols
-    
-    # Create the final DataFrame
-    df_final = df[general_reordered].copy()
+    exclusion_phrases = ["(Count in Grade)", "Category Score", "Ungraded"]
+    columns_info = []
+    general_columns = []
+    cols_to_remove = {"ID de usuario único", "ID de usuario unico"}
 
-    final_coded = []
-    for cat, wt in weights.items():
-        # Find the specific category score column name
-        category_score_col = f"Term2- 2025 - {cat} - Category Score"
-        
-        # Check if the column exists in the DataFrame
-        if category_score_col in df.columns:
-            # Convert to numeric, handle potential non-numeric values
-            raw_avg = pd.to_numeric(df[category_score_col], errors='coerce').fillna(0)
-            
-            # Apply the weight
-            weighted = raw_avg * wt
-            
-            # Add the weighted average column to the final DataFrame
-            avg_col = f"Average {cat}"
-            df_final[avg_col] = weighted
-            final_coded.append(avg_col)
+    for i, col in enumerate(df.columns):
+        col = str(col)
+        if col in cols_to_remove or any(ph in col for ph in exclusion_phrases):
+            continue
+
+        if "Grading Category:" in col:
+            m_cat = re.search(r'Grading Category:\s*([^,)]+)', col)
+            category = m_cat.group(1).strip() if m_cat else "Unknown"
+            m_pts = re.search(r'Max Points:\s*([\d\.]+)', col)
+            max_pts = float(m_pts.group(1)) if m_pts else None
+            base_name = col.split('(')[0].strip()
+            new_name = f"{base_name} {category}".strip()
+            columns_info.append({
+                'original': col,
+                'new_name': new_name,
+                'category': category,
+                'seq_num': i,
+                'max_points': max_pts
+            })
         else:
-            print(f"Warning: Category score column '{category_score_col}' not found. Skipping.")
-
-    def compute_final_grade(row):
-        total = 0
-        valid = False
-        for col in row.index:
-            if col.startswith("Average "):
-                val = row[col]
-                if pd.notna(val):
-                    total += val
-                    valid = True
-        return custom_round(total) if valid else pd.NA
-
-    df_final["Final Grade"] = df_final.apply(compute_final_grade, axis=1)
-
-    # The rest of the function for generating the Excel report remains the same.
-    # ...
-    return output
+            general_columns.append(col)
 
     name_terms = ["name", "first", "last"]
     name_cols = [c for c in general_columns if any(t in c.lower() for t in name_terms)]
