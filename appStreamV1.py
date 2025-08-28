@@ -21,7 +21,7 @@ def custom_round(value):
 def process_data(df, teacher, subject, course, level):
     columns_to_drop = [
         "Nombre de usuario", "Username", "Promedio General",
-        "Unique User ID", "2025", "Term3 - 2025"
+        "Unique User ID", "Term3 - 2025"
     ]
     df.drop(columns=columns_to_drop, inplace=True, errors='ignore')
 
