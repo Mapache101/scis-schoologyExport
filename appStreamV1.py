@@ -113,18 +113,9 @@ def process_data(df, teacher, subject, course, level):
     final_order = general_reordered + final_coded
     df_final = df_cleaned[final_order]
 
-    def compute_final_grade(row):
-        total = 0
-        valid = False
-        for col in row.index:
-            if col.startswith("Average "):
-                val = row[col]
-                if pd.notna(val):
-                    total += val
-                    valid = True
-        return custom_round(total) if valid else pd.NA
-
-    df_final["Final Grade"] = df_final.apply(compute_final_grade, axis=1)
+    # --- NEW LOGIC: Use "Term2- 2025" column for final grade ---
+    df_final["Final Grade"] = df["Term2- 2025"]
+    # --- END NEW LOGIC ---
 
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter',
