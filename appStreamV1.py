@@ -21,14 +21,7 @@ def custom_round(value):
 def process_data(df, teacher, subject, course, level):
     columns_to_drop = [
         "Nombre de usuario", "Username", "Promedio General",
-        "Term1 - 2024", "Term1 - 2024 - AUTO EVAL TO BE_SER - Puntuación de categoría",
-        "Term1 - 2024 - TO BE_SER - Puntuación de categoría",
-        "Term1 - 2024 - TO DECIDE_DECIDIR - Puntuación de categoría",
-        "Term1 - 2024 - TO DO_HACER - Puntuación de categoría",
-        "Term1 - 2024 - TO KNOW_SABER - Puntuación de categoría",
-        "Unique User ID", "Overall", "2025", "Term1 - 2025",
-        "Term2- 2025", "Term3 - 2025"
-    ]
+        "Unique User ID", "Overall", "2025", "Term1 - 2025", "Term3 - 2025"]
     df.drop(columns=columns_to_drop, inplace=True, errors='ignore')
 
     df.replace("Missing", pd.NA, inplace=True)
