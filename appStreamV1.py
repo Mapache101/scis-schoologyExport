@@ -18,7 +18,55 @@ weights = {
 def custom_round(value):
     return math.floor(value + 0.5)
 
-def process_data(df, teacher, subject, course, level):
+def create_single_trimester_gradebook(df, trimester_to_keep):
+
+    # Define the general columns to always keep
+    general_columns = df.columns[:5].tolist()
+    
+    # Find the column index for the start of each trimester
+    trimester_start_indices = {}
+    for i, col in enumerate(df.columns):
+        if 'Term1' in col and 'Term1' not in trimester_start_indices:
+            trimester_start_indices['Term1'] = i
+        if 'Term2' in col and 'Term2' not in trimester_start_indices:
+            trimester_start_indices['Term2'] = i
+        if 'Term3' in col and 'Term3' not in trimester_start_indices:
+            trimester_start_indices['Term3'] = i
+
+    # Check if the selected trimester exists in the file
+    if trimester_to_keep not in trimester_start_indices:
+        st.error(f"Could not find a starting column for {trimester_to_keep}. Please check your file format.")
+        return None
+
+    # Get the start index for the selected trimester's grades
+    start_index = trimester_start_indices[trimester_to_keep]
+    
+    # Determine the end index of the trimester's grade columns
+    end_index = None
+    if trimester_to_keep == 'Term1' and 'Term2' in trimester_start_indices:
+        end_index = trimester_start_indices['Term2']
+    elif trimester_to_keep == 'Term2' and 'Term3' in trimester_start_indices:
+        end_index = trimester_start_indices['Term3']
+    elif trimester_to_keep == 'Term3':
+        # If it's the last trimester, we go to the end of the DataFrame
+        end_index = len(df.columns)
+
+    if end_index is None:
+        # If no end column was found, it means this is the last term in the file
+        end_index = len(df.columns)
+
+    # Slice the DataFrame to get the columns for the selected trimester's grades
+    trimester_grade_columns = df.columns[start_index:end_index].tolist()
+    
+    # Combine general columns with the selected trimester's grade columns
+    columns_to_keep = general_columns + trimester_grade_columns
+            
+    # Create the new DataFrame with the filtered columns
+    filtered_df = df[columns_to_keep]
+
+    return filtered_df
+
+def process_data(df, teacher, subject, course, level, trimester_choice):
     columns_to_drop = [
         "Nombre de usuario", "Username", "Promedio General",
         "Unique User ID", "2025", "Term3 - 2025"
@@ -75,28 +123,30 @@ def process_data(df, teacher, subject, course, level):
         grp = sorted(groups[cat], key=lambda x: x['seq_num'])
         names = [d['new_name'] for d in grp]
         
-        # --- NEW LOGIC: Use pre-calculated category score instead of summing individual assignments ---
-        # Find the specific category score column name
-        category_score_col = f"Term2- 2025 - {cat} - Category Score"
+        # --- DYNAMIC LOGIC: Use pre-calculated category score based on trimester choice ---
+        category_score_col = f"{trimester_choice} - 2025 - {cat} - Category Score"
         
-        raw_avg = pd.Series(dtype='float64') # Initialize an empty Series
+        raw_avg = pd.Series(dtype='float64')
         if category_score_col in df.columns:
-            # Use the pre-calculated score from the original dataframe
             raw_avg = pd.to_numeric(df[category_score_col], errors='coerce')
         else:
-            # Fallback to the original method if column is not found
-            numeric = df_cleaned[names].apply(pd.to_numeric, errors='coerce')
-            sum_earned = numeric.sum(axis=1, skipna=True)
-            max_points_df = pd.DataFrame(index=df_cleaned.index)
-            for d in grp:
-                col = d['new_name']
-                max_pts = d['max_points']
-                max_points_df[col] = numeric[col].notna().astype(float) * max_pts
-            sum_possible = max_points_df.sum(axis=1, skipna=True)
-            raw_avg = (sum_earned / sum_possible) * 100
+            # Fallback for columns with no space
+            category_score_col_no_space = f"{trimester_choice}- 2025 - {cat} - Category Score"
+            if category_score_col_no_space in df.columns:
+                raw_avg = pd.to_numeric(df[category_score_col_no_space], errors='coerce')
+            else:
+                numeric = df_cleaned[names].apply(pd.to_numeric, errors='coerce')
+                sum_earned = numeric.sum(axis=1, skipna=True)
+                max_points_df = pd.DataFrame(index=df_cleaned.index)
+                for d in grp:
+                    col = d['new_name']
+                    max_pts = d['max_points']
+                    max_points_df[col] = numeric[col].notna().astype(float) * max_pts
+                sum_possible = max_points_df.sum(axis=1, skipna=True)
+                raw_avg = (sum_earned / sum_possible) * 100
         
         raw_avg = raw_avg.fillna(0)
-        # --- END NEW LOGIC ---
+        # --- END DYNAMIC LOGIC ---
             
         wt = None
         for key in weights:
@@ -113,9 +163,17 @@ def process_data(df, teacher, subject, course, level):
     final_order = general_reordered + final_coded
     df_final = df_cleaned[final_order]
 
-    # --- NEW LOGIC: Use "Term2- 2025" column for final grade ---
-    df_final["Final Grade"] = df["Term2- 2025"]
-    # --- END NEW LOGIC ---
+    # --- DYNAMIC LOGIC: Use a dynamic column for final grade ---
+    final_grade_col = f"{trimester_choice} - 2025"
+    final_grade_col_no_space = f"{trimester_choice}- 2025"
+
+    if final_grade_col in df.columns:
+        df_final["Final Grade"] = df[final_grade_col]
+    elif final_grade_col_no_space in df.columns:
+        df_final["Final Grade"] = df[final_grade_col_no_space]
+    else:
+        df_final["Final Grade"] = pd.NA
+    # --- END DYNAMIC LOGIC ---
 
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter',
@@ -190,7 +248,15 @@ uploaded_file = st.file_uploader("Upload a Schoology Gradebook CSV", type="csv")
 
 if uploaded_file:
     df = pd.read_csv(uploaded_file)
-
+    
+    st.success("File uploaded successfully!")
+    st.subheader("Select Trimester to Process")
+    
+    trimester_choice = st.selectbox(
+        "Choose the trimester you want to process:",
+        ("Term1", "Term2", "Term3")
+    )
+    
     with st.form("form"):
         st.subheader("Teacher/Class Info")
         teacher = st.text_input("Teacher Name")
@@ -200,12 +266,15 @@ if uploaded_file:
         submitted = st.form_submit_button("Generate Grade Report")
 
     if submitted:
-        result = process_data(df, teacher, subject, course, level)
-        st.success("✅ Grade report generated!")
+        filtered_df = create_single_trimester_gradebook(df, trimester_choice)
 
-        st.download_button(
-            label="📥 Download Excel Report",
-            data=result.getvalue(),
-            file_name=f"{subject}_{course}_grades.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
+        if filtered_df is not None:
+            result = process_data(filtered_df, teacher, subject, course, level, trimester_choice)
+            st.success("✅ Grade report generated!")
+
+            st.download_button(
+                label="📥 Download Excel Report",
+                data=result.getvalue(),
+                file_name=f"{subject}_{course}_{trimester_choice}_grades.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
