@@ -67,6 +67,19 @@ def create_single_trimester_gradebook(df, trimester_to_keep):
     return filtered_df
 
 def process_data(df, teacher, subject, course, level, trimester_choice):
+    
+    # --- STEP 1: PRESERVE FINAL GRADE FROM ORIGINAL CSV ---
+    # We extract the final grade column immediately before any dropping happens
+    final_grade_series = None
+    target_col = f"{trimester_choice} - 2025"
+    target_col_alt = f"{trimester_choice}- 2025" # Handle potential spacing differences
+
+    if target_col in df.columns:
+        final_grade_series = df[target_col].copy()
+    elif target_col_alt in df.columns:
+        final_grade_series = df[target_col_alt].copy()
+    # ------------------------------------------------------
+
     columns_to_drop = [
         "Nombre de usuario", "Username", "Promedio General",
         "Unique User ID", "2025", "Term3 - 2025"
@@ -123,7 +136,7 @@ def process_data(df, teacher, subject, course, level, trimester_choice):
         grp = sorted(groups[cat], key=lambda x: x['seq_num'])
         names = [d['new_name'] for d in grp]
         
-        # --- DYNAMIC LOGIC: Use pre-calculated category score based on trimester choice ---
+        # Use pre-calculated category score based on trimester choice
         category_score_col = f"{trimester_choice} - 2025 - {cat} - Category Score"
         
         raw_avg = pd.Series(dtype='float64')
@@ -146,7 +159,6 @@ def process_data(df, teacher, subject, course, level, trimester_choice):
                 raw_avg = (sum_earned / sum_possible) * 100
         
         raw_avg = raw_avg.fillna(0)
-        # --- END DYNAMIC LOGIC ---
             
         wt = None
         for key in weights:
@@ -163,17 +175,12 @@ def process_data(df, teacher, subject, course, level, trimester_choice):
     final_order = general_reordered + final_coded
     df_final = df_cleaned[final_order]
 
-    # --- DYNAMIC LOGIC: Use a dynamic column for final grade ---
-    final_grade_col = f"{trimester_choice} - 2025"
-    final_grade_col_no_space = f"{trimester_choice}- 2025"
-
-    if final_grade_col in df.columns:
-        df_final["Final Grade"] = df[final_grade_col]
-    elif final_grade_col_no_space in df.columns:
-        df_final["Final Grade"] = df[final_grade_col_no_space]
+    # --- ASSIGN PRESERVED FINAL GRADE ---
+    if final_grade_series is not None:
+        df_final["Final Grade"] = final_grade_series
     else:
         df_final["Final Grade"] = pd.NA
-    # --- END DYNAMIC LOGIC ---
+    # -------------------------------------
 
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter',
@@ -242,7 +249,7 @@ def process_data(df, teacher, subject, course, level, trimester_choice):
 
 # --- Streamlit App ---
 
-st.title("📊 Schoology Gradebook Analyzer")
+st.title("📊 Schoology Gradebook Analyzer t3")
 
 uploaded_file = st.file_uploader("Upload a Schoology Gradebook CSV", type="csv")
 
